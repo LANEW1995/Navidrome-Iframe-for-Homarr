@@ -82,13 +82,6 @@ Add this to your `crontab -e`:
 @reboot /bin/sh -lc 'sleep 15; . /opt/navidrome-iframe/webplayer.env; mkdir -p "$HOME/.logs"; cd /opt/navidrome-iframe; /usr/bin/python3 webplayer.py >> "$HOME/.logs/webplayer.log" 2>&1 &'
 ```
 
-Manual restart (same env):
-
-```bash
-fuser -k 5069/tcp 2>/dev/null || pkill -f '/opt/navidrome-iframe/webplayer.py'
-/bin/sh -lc '. /opt/navidrome-iframe/webplayer.env; cd /opt/navidrome-iframe; nohup /usr/bin/python3 webplayer.py >> "$HOME/.logs/webplayer.log" 2>&1 & disown'
-```
-
 ---
 
 ## Environment variables
