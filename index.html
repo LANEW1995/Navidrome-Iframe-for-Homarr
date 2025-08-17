@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Homarr Music Player</title>
+    <style>
+      /* ── THEME ─────────────────────────────────────────── */
+      :root {
+        --card: #2d2d2d;
+        --accent: #30c36b;
+        --accent-hover: #279158;
+        --bar-bg: #525252;
+        --text: #e9e9e9;
+        --text-dim: #979797;
+      }
+      /* ── RESET / LAYOUT ───────────────────────────────── */
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: system-ui, sans-serif;
+      }
+      html,
+      body {
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .player {
+        position: relative; /* anchor for overlay */
+        width: 100%;
+        max-width: 400px; /* fluid, but never larger than design */
+        background: var(--card);
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 6px 22px #000c;
+        color: var(--text);
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 16px;
+      }
+      /* buttons */
+      .btn {
+        font-size: 24px;
+        padding: 6px 14px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: 0.2s;
+      }
+      .btn-rand {
+        background: #2d2d2d;
+        color: #fff;
+      }
+      .btn-rand:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px #0009;
+      }
+      /* album */
+      .album {
+        position: relative;
+        width: 100%;
+        padding-top: 100%; /* square */
+        border-radius: 10px;
+        background: linear-gradient(145deg, #657eff, #8151d9);
+        overflow: hidden;
+        margin-bottom: 18px;
+      }
+      .album img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        opacity: 0;
+        transition: 0.3s;
+      }
+      .album img.loaded {
+        opacity: 1;
+      }
+      .album .note {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 56px;
+        color: #dcdcff44;
+      }
+      /* text */
+      h2 {
+        font-size: 19px;
+        text-align: center;
+        margin-bottom: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      h3 {
+        font-size: 13px;
+        text-align: center;
+        color: var(--text-dim);
+        margin-bottom: 20px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      /* bars */
+      .bar {
+        width: 100%;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--bar-bg);
+        cursor: pointer;
+      }
+      .bar .fill {
+        height: 100%;
+        width: 0;
+        background: var(--accent);
+        border-radius: 2px;
+      }
+      .time {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        color: var(--text-dim);
+        margin: 6px 0 10px;
+      }
+      /* controls */
+      .controls {
+        display: flex;
+        justify-content: center;
+        gap: 22px;
+        margin-bottom: 15px;
+      }
+      .icon-btn {
+        width: 46px;
+        height: 46px;
+        border: none;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        color: var(--text);
+        font-size: 20px;
+        cursor: pointer;
+        transition: 0.15s;
+      }
+      .icon-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px #0009;
+      }
+      .icon-btn.play {
+        background: var(--accent);
+        color: #fff;
+        font-size: 24px;
+      }
+      .icon-btn.play:hover {
+        background: var(--accent-hover);
+      }
+      .icon-btn:disabled {
+        opacity: 0.28;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+      /* volume */
+      .vol-wrap {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .vol-wrap svg {
+        width: 18px;
+        height: 18px;
+        color: var(--text-dim);
+      }
+
+      /* ── SEARCH OVERLAY ─────────────────────────────── */
+      .overlay {
+        display: none;
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        background: rgba(0, 0, 0, 0.55); /* slightly transparent */
+        align-items: center;
+        justify-content: center;
+      }
+      .overlay.show {
+        display: flex;
+      }
+      .modal {
+        width: 92%;
+        max-width: 320px;
+        background: rgba(35, 35, 35, 0.96);
+        border: 1px solid #444;
+        border-radius: 10px;
+        padding: 12px 12px 6px;
+        box-shadow: 0 10px 30px #000d;
+      }
+      .search-input {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid #4a4a4a;
+        background: #2b2b2b;
+        color: #fff;
+        font-size: 15px;
+      }
+      .search-input:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      .results {
+        margin-top: 8px;
+      }
+      .result {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: 0.14s;
+      }
+      .result:hover {
+        background: #323232;
+      }
+      .result img {
+        width: 42px;
+        height: 42px;
+        border-radius: 4px;
+        object-fit: cover;
+      }
+      .meta {
+        flex: 1;
+        overflow: hidden;
+      }
+      .meta .t {
+        font-size: 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .meta .a {
+        font-size: 11px;
+        color: var(--text-dim);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        padding: 4px 2px 2px;
+      }
+      .close {
+        background: #444;
+        color: #ddd;
+        border: none;
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+      }
+      .close:hover {
+        background: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="player">
+      <!-- album -->
+      <div class="album">
+        <div class="note">♪</div>
+        <img id="imgCover" alt="" />
+      </div>
+
+      <!-- track titles -->
+      <h2 id="title">No track selected</h2>
+      <h3 id="artist">Press Random</h3>
+
+      <!-- progress -->
+      <div class="bar" id="barProg"><div class="fill" id="fillProg"></div></div>
+      <div class="time">
+        <span id="cur">0:00</span><span id="tot">0:00</span>
+      </div>
+
+      <!-- controls -->
+      <div class="controls">
+        <!-- Search (replaces shuffle) -->
+        <button id="btnSearch" class="icon-btn" title="Search">🔍</button>
+
+        <button id="btnPrev" class="icon-btn" title="Back" disabled>⏮</button>
+        <button id="btnPlay" class="icon-btn play" title="Play/Pause">
+          ▶️
+        </button>
+        <button id="btnNext" class="icon-btn" title="Next" disabled>⏭</button>
+        <button id="btnRandom" class="btn btn-rand" title="Random">🎲</button>
+      </div>
+
+      <!-- volume -->
+      <div class="vol-wrap">
+        <svg viewBox="0 0 24 24"><path d="M5 9v6h4l5 5V4l-5 5H5z" /></svg>
+        <div class="bar" id="barVol"><div class="fill" id="fillVol"></div></div>
+      </div>
+
+      <!-- SEARCH OVERLAY -->
+      <div id="overlay" class="overlay" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true">
+          <input
+            id="searchBox"
+            class="search-input"
+            placeholder="Search songs…"
+            autocomplete="off"
+          />
+          <div id="resBox" class="results"></div>
+          <div class="modal-footer">
+            <button id="btnClose" class="close">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <audio id="audio" preload="metadata"></audio>
+
+    <script>
+      /* === CONFIG === */
+      const API = window.location.origin;
+
+      /* === STATE === */
+      let q = [],
+        idx = -1,
+        playing = false,
+        debounce;
+
+      /* === DOM === */
+      const $ = (id) => document.getElementById(id);
+      const audio = $("audio"),
+        img = $("imgCover");
+      const barProg = $("barProg"),
+        fillProg = $("fillProg");
+      const barVol = $("barVol"),
+        fillVol = $("fillVol");
+      const title = $("title"),
+        artist = $("artist");
+      const btnPlay = $("btnPlay"),
+        btnPrev = $("btnPrev"),
+        btnNext = $("btnNext");
+      const btnRandom = $("btnRandom"),
+        btnSearch = $("btnSearch");
+      const overlay = $("overlay"),
+        searchBox = $("searchBox"),
+        resBox = $("resBox"),
+        btnClose = $("btnClose");
+
+      /* === HELPERS === */
+      const fmt = (s) =>
+        `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+      const map = (s) => ({
+        id: s.id,
+        title: s.title,
+        artist: s.artist,
+        cover: `/api/cover/${s.coverArt || s.id}`,
+        stream: `/api/stream/${s.id}`,
+      });
+      const escapeHTML = (t) =>
+        t.replace(
+          /[&<>"']/g,
+          (m) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[m],
+        );
+      const unescapeHTML = (t) => {
+        const p = document.createElement("textarea");
+        p.innerHTML = t;
+        return p.value;
+      };
+
+      const nav = () => {
+        btnPrev.disabled = idx < 0;
+        btnNext.disabled = idx >= q.length - 1;
+      };
+
+      /* === VOLUME INIT === */
+      (() => {
+        const v = parseFloat(localStorage.getItem("vol"));
+        audio.volume = isNaN(v) ? 0.7 : v;
+        fillVol.style.width = audio.volume * 100 + "%";
+      })();
+
+      /* === CORE === */
+      function load(song, push = true) {
+        if (audio.src) audio.pause();
+        if (push) {
+          q.push(song);
+          idx = q.length - 1;
+        }
+        title.textContent = song.title;
+        artist.textContent = song.artist;
+        img.classList.remove("loaded");
+        img.src = API + song.cover;
+        img.onload = () => img.classList.add("loaded");
+        audio.src = API + song.stream;
+        audio.load();
+        play();
+        nav();
+      }
+
+      function play() {
+        audio.play();
+        playing = true;
+        btnPlay.textContent = "⏸";
+      }
+      function pause() {
+        audio.pause();
+        playing = false;
+        btnPlay.textContent = "▶️";
+      }
+      function togglePlay() {
+        playing ? pause() : play();
+      }
+
+      function next() {
+        if (idx < q.length - 1) {
+          idx++;
+          load(q[idx], false);
+        }
+      }
+
+      // Back: restart if >3s, else previous (or restart if first)
+      function prev() {
+        if (!audio.src) return;
+        if (audio.currentTime > 3) {
+          audio.currentTime = 0;
+          play();
+          return;
+        }
+        if (idx > 0) {
+          idx--;
+          load(q[idx], false);
+        } else {
+          audio.currentTime = 0;
+          play();
+        }
+      }
+
+      async function randomQueue(size = 25) {
+        const r = await fetch(`${API}/api/random/list?size=${size}`);
+        const j = await r.json();
+        if (j.success) {
+          q = j.songs.map(map);
+          idx = 0;
+          load(q[0], false);
+        } else {
+          alert("Random failed");
+        }
+      }
+
+      /* === SEARCH === */
+      function openSearch() {
+        overlay.classList.add("show");
+        overlay.setAttribute("aria-hidden", "false");
+        searchBox.value = "";
+        resBox.innerHTML = "";
+        searchBox.focus();
+      }
+      function closeSearch() {
+        overlay.classList.remove("show");
+        overlay.setAttribute("aria-hidden", "true");
+      }
+
+      btnSearch.addEventListener("click", openSearch);
+      btnClose.addEventListener("click", closeSearch);
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) closeSearch();
+      });
+
+      searchBox.addEventListener("input", () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => doSearch(searchBox.value.trim()), 250);
+      });
+
+      async function doSearch(qry) {
+        if (!qry) {
+          resBox.innerHTML = "";
+          return;
+        }
+        try {
+          const r = await fetch(
+            `${API}/api/search?query=${encodeURIComponent(qry)}`,
+          );
+          const j = await r.json();
+          const results = j && j.success && j.results ? j.results : [];
+          if (!results.length) {
+            resBox.innerHTML =
+              "<div style='padding:8px;color:#aaa'>No results</div>";
+            return;
+          }
+          const items = results.slice(0, 5);
+          resBox.innerHTML = items
+            .map(
+              (s) => `
+            <div class="result" data-id="${s.id}" data-title="${escapeHTML(s.title)}" data-artist="${escapeHTML(s.artist)}" data-cover="${s.coverArt || ""}">
+              <img src="${API}/api/cover/${s.coverArt || s.id}" alt="">
+              <div class="meta"><div class="t">${escapeHTML(s.title)}</div><div class="a">${escapeHTML(s.artist)}</div></div>
+            </div>
+          `,
+            )
+            .join("");
+        } catch (err) {
+          console.error("search error:", err);
+          resBox.innerHTML =
+            "<div style='padding:8px;color:#f88'>Search error</div>";
+        }
+      }
+
+      resBox.addEventListener("click", (e) => {
+        const row = e.target.closest(".result");
+        if (!row) return;
+        const { id, title, artist, cover } = row.dataset;
+        closeSearch();
+        load({
+          id,
+          title: unescapeHTML(title),
+          artist: unescapeHTML(artist),
+          cover: `/api/cover/${cover || id}`,
+          stream: `/api/stream/${id}`,
+        });
+      });
+
+      /* === PROGRESS (pointer-based: click + drag seek) === */
+      audio.addEventListener("loadedmetadata", () => {
+        $("tot").textContent = fmt(audio.duration || 0);
+      });
+      audio.addEventListener("timeupdate", () => {
+        if (!isFinite(audio.duration) || audio.duration <= 0) return;
+        fillProg.style.width = (audio.currentTime / audio.duration) * 100 + "%";
+        $("cur").textContent = fmt(audio.currentTime);
+      });
+      audio.addEventListener("ended", next);
+
+      /* Unified pointer handlers prevent “reset to 0” */
+      let draggingId = null;
+      let wasPlaying = false;
+
+      function pctFromEvent(e) {
+        const rect = barProg.getBoundingClientRect();
+        const clientX =
+          e.clientX !== undefined
+            ? e.clientX
+            : e.touches && e.touches[0]
+              ? e.touches[0].clientX
+              : 0;
+        const x = clientX - rect.left;
+        // Guard against zero/invalid widths:
+        const p = x / Math.max(rect.width || 0, 1);
+        return Math.min(Math.max(p, 0), 1);
+      }
+      function applySeekPct(p) {
+        if (!isFinite(audio.duration) || audio.duration <= 0) return;
+        audio.currentTime = p * audio.duration;
+        fillProg.style.width = p * 100 + "%";
+      }
+
+      /* pointerdown: pause (only while dragging), seek immediately, capture pointer */
+      barProg.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        wasPlaying = !audio.paused;
+        audio.pause();
+        draggingId = e.pointerId;
+        barProg.setPointerCapture(e.pointerId);
+        applySeekPct(pctFromEvent(e));
+      });
+      /* pointermove: update while dragging */
+      barProg.addEventListener("pointermove", (e) => {
+        if (draggingId !== e.pointerId) return;
+        e.preventDefault();
+        applySeekPct(pctFromEvent(e));
+      });
+      /* pointerup/cancel/leave: finish drag, resume if it was playing */
+      function endDrag(e) {
+        if (draggingId === null) return;
+        if (e && e.pointerId && e.pointerId !== draggingId) return;
+        draggingId = null;
+        if (wasPlaying) audio.play();
+      }
+      barProg.addEventListener("pointerup", endDrag);
+      barProg.addEventListener("pointercancel", endDrag);
+      barProg.addEventListener("pointerleave", (e) => {
+        if (draggingId !== null) {
+          applySeekPct(pctFromEvent(e));
+          endDrag(e);
+        }
+      });
+
+      /* === VOLUME DRAG === */
+      let vdrag = false;
+      barVol.addEventListener("mousedown", (e) => {
+        vdrag = true;
+        setVol(e);
+      });
+      document.addEventListener("mousemove", (e) => {
+        if (vdrag) setVol(e);
+      });
+      document.addEventListener("mouseup", () => {
+        vdrag = false;
+      });
+      function setVol(e) {
+        const r = barVol.getBoundingClientRect();
+        const p = Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1);
+        audio.volume = p;
+        fillVol.style.width = p * 100 + "%";
+        localStorage.setItem("vol", p.toFixed(2));
+      }
+
+      /* === BUTTON HOOKS (no keyboard shortcuts) === */
+      btnPlay.addEventListener("click", togglePlay);
+      btnPrev.addEventListener("click", prev);
+      btnNext.addEventListener("click", next);
+      btnRandom.addEventListener("click", () => randomQueue());
+    </script>
+  </body>
+</html>

@@ -1,0 +1,25 @@
+# env / secrets
+.env
+.env.*
+*.env
+webplayer.env
+
+# logs
+*.log
+logs/
+**/.logs/
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
