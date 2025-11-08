@@ -13,7 +13,7 @@
         --bar-bg: #525252;
         --text: #e9e9e9;
         --text-dim: #979797;
-        --art-mult: 1; /* elastic album art multiplier */
+        --art-mult: 1;
       }
 
       /* ── RESET / LAYOUT ───────────────────────────────── */
@@ -53,13 +53,13 @@
         transform-origin: center center;
         will-change: transform;
 
-        /* art bias based on scale (subtle) */
+        /* subtle art bias based on scale */
         --art-mult: clamp(0.92, 0.8 + var(--s), 1.12);
       }
 
       /* ── PLAYER CARD ──────────────────────────────────── */
       .player {
-        position: relative; /* anchor for overlay */
+        position: relative;
         width: 100%;
         height: 100%;
         background: var(--card);
@@ -68,16 +68,16 @@
         box-shadow: 0 6px 22px #000c;
         color: var(--text);
       }
+
+      /* album (shorter to give breathing room below) */
       .album {
         position: relative;
         width: 100%;
-        padding-top: calc(
-          90% * var(--art-mult)
-        ); /* was 100%; trims height 10% */
+        padding-top: calc(90% * var(--art-mult)); /* was 100% */
         border-radius: 10px;
         background: linear-gradient(145deg, #657eff, #8151d9);
         overflow: hidden;
-        margin-bottom: calc(18px / var(--s));
+        margin-bottom: calc(18px / var(--s)); /* scale-proof spacing */
       }
       .album img {
         position: absolute;
@@ -457,6 +457,13 @@
         resBox = $("resBox"),
         btnClose = $("btnClose");
 
+      /* Returns true only on real page reloads (F5/Ctrl+R, etc.) */
+      function isHardReload() {
+        const nav = performance.getEntriesByType?.("navigation")?.[0];
+        if (nav) return nav.type === "reload";
+        return performance.navigation && performance.navigation.type === 1;
+      }
+
       /* === HELPERS === */
       const fmt = (s) =>
         `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -489,8 +496,6 @@
         btnPrev.disabled = idx < 0;
         btnNext.disabled = idx >= q.length - 1;
       };
-
-      /* play/pause icon updater */
       function updatePlayIcon() {
         btnPlay.innerHTML = `<span class="glyph">${playing ? "⏸" : "▶️"}</span>`;
       }
@@ -540,7 +545,6 @@
         }
       }
 
-      // Back: restart if >3s, else previous (or restart if first)
       function prev() {
         if (!audio.src) return;
         if (audio.currentTime > 3) {
@@ -650,7 +654,6 @@
         }
       }
 
-      // Click-to-load result
       resBox.addEventListener("click", (e) => {
         const row = e.target.closest(".result");
         if (!row) return;
@@ -801,16 +804,24 @@
           audio.load();
 
           const startAt = Number(st.t) || 0;
-          const shouldPlay = !!st.playing;
+          const wantedPlay = !!st.playing;
           if (!isNaN(st.vol)) {
             audio.volume = st.vol;
             fillVol.style.width = audio.volume * 100 + "%";
           }
+
           audio.addEventListener("loadedmetadata", function once() {
             audio.removeEventListener("loadedmetadata", once);
             audio.currentTime = Math.min(startAt, audio.duration || startAt);
-            if (shouldPlay) play();
-            else pause();
+
+            if (isHardReload()) {
+              // On hard refresh: keep paused and show ▶️
+              playing = false;
+              updatePlayIcon();
+            } else {
+              // On iframe recreate/resize: resume if it was playing
+              wantedPlay ? play() : pause();
+            }
           });
           nav();
         } catch {}
@@ -828,27 +839,18 @@
       updatePlayIcon();
       restoreState();
 
-      /* === RESPONSIVE SCALE (fit to iframe, contain) === */
+      /* === RESPONSIVE SCALE (cover + tiny overscan) === */
       (function () {
         const stage = document.getElementById("stage");
         const scaleBox = document.querySelector(".scale-box");
 
-        // Match CSS base size
         const BASE_W = 430,
           BASE_H = 650;
 
         function applyScale(w, h) {
-          const BASE_W = 430,
-            BASE_H = 650; // keep synced with CSS
-          // cover-fit so we never see side/top gaps
-          let s = Math.max(w / BASE_W, h / BASE_H);
-
-          // tiny overscan to defeat sub-pixel seams on some DPRs
-          s *= 1.002; // ~0.2% zoom; invisible but removes the fringe
-
-          document
-            .querySelector(".scale-box")
-            .style.setProperty("--s", s.toString());
+          let s = Math.max(w / BASE_W, h / BASE_H); // cover
+          s *= 1.002; // overscan to defeat sub-pixel seams
+          scaleBox.style.setProperty("--s", s.toString());
         }
 
         const ro = new ResizeObserver((entries) => {
