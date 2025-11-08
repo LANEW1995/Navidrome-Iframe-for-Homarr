@@ -27,25 +27,18 @@
       html,
       body {
         height: 100%;
-        background: transparent; /* <— this makes the iframe background clear */
-        overflow: hidden;
-      }
-
-      /* Optional safeguard: ensure the stage also blends cleanly */
-      .stage {
-        background: transparent; /* <— this kills any faint white border */
-      }
-
-      /* Replace your existing .stage and .scale-box rules with this */
-
-      .stage {
-        position: absolute;
-        inset: 0; /* fill iframe completely */
         background: transparent;
         overflow: hidden;
       }
 
-      /* Center perfectly, remove sub-pixel borders */
+      .stage {
+        position: absolute;
+        inset: 0;
+        background: transparent;
+        overflow: hidden;
+      }
+
+      /* Center perfectly, then scale */
       .scale-box {
         --base-w: 430;
         --base-h: 650;
@@ -56,12 +49,9 @@
         top: 50%;
         width: calc(var(--base-w) * 1px);
         height: calc(var(--base-h) * 1px);
-
         transform: translate(-50%, -50%) scale(var(--s));
         transform-origin: center center;
         will-change: transform;
-
-        /* eliminate any rounding gaps on fractional scales */
         filter: drop-shadow(0 0 0 transparent);
       }
 
@@ -104,7 +94,7 @@
       .album {
         position: relative;
         width: 100%;
-        padding-top: calc(100% * var(--art-mult)); /* elastic square */
+        padding-top: calc(100% * var(--art-mult));
         border-radius: 10px;
         background: linear-gradient(145deg, #657eff, #8151d9);
         overflow: hidden;
@@ -213,6 +203,16 @@
         box-shadow: none;
       }
 
+      /* perfectly center the emoji and keep the nudge constant across scaling */
+      .icon-btn .glyph {
+        position: relative;
+        display: block;
+        line-height: 1;
+        font-size: 24px;
+        /* Use the scale variable so -2px stays -2px even when the whole card scales */
+        top: calc(-2px / var(--s));
+      }
+
       /* volume */
       .vol-wrap {
         display: flex;
@@ -285,18 +285,18 @@
         flex: 1;
         overflow: hidden;
       }
-      .meta .t {
-        font-size: 14px;
+      .meta .t,
+      .meta .a {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
+      .meta .t {
+        font-size: 14px;
+      }
       .meta .a {
         font-size: 11px;
         color: var(--text-dim);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
       }
       .modal-footer {
         display: flex;
@@ -353,14 +353,12 @@
 
           <!-- controls -->
           <div class="controls">
-            <!-- Search (replaces shuffle) -->
             <button id="btnSearch" class="icon-btn" title="Search">🔍</button>
-
             <button id="btnPrev" class="icon-btn" title="Back" disabled>
               ⏮
             </button>
             <button id="btnPlay" class="icon-btn play" title="Play/Pause">
-              ▶️
+              <span class="glyph">▶️</span>
             </button>
             <button id="btnNext" class="icon-btn" title="Next" disabled>
               ⏭
@@ -454,16 +452,21 @@
               "'": "&#39;",
             })[m],
         );
-      const unescapeHTML = (t) => {
-        const p = document.createElement("textarea");
-        p.innerHTML = t;
-        return p.value;
-      };
+      const unescapeHTML = (t) =>
+        ((p) => {
+          p.innerHTML = t;
+          return p.value;
+        })(document.createElement("textarea"));
 
       const nav = () => {
         btnPrev.disabled = idx < 0;
         btnNext.disabled = idx >= q.length - 1;
       };
+
+      /* play/pause icon updater */
+      function updatePlayIcon() {
+        btnPlay.innerHTML = `<span class="glyph">${playing ? "⏸" : "▶️"}</span>`;
+      }
 
       /* === VOLUME INIT === */
       (() => {
@@ -493,17 +496,16 @@
       function play() {
         audio.play();
         playing = true;
-        btnPlay.textContent = "⏸";
+        updatePlayIcon();
       }
       function pause() {
         audio.pause();
         playing = false;
-        btnPlay.textContent = "▶️";
+        updatePlayIcon();
       }
       function togglePlay() {
         playing ? pause() : play();
       }
-
       function next() {
         if (idx < q.length - 1) {
           idx++;
@@ -587,8 +589,7 @@
             <div class="result" data-id="${s.id}" data-title="${escapeHTML(s.title)}" data-artist="${escapeHTML(s.artist)}" data-cover="${s.coverArt || ""}">
               <img src="${API}/api/cover/${s.coverArt || s.id}" alt="">
               <div class="meta"><div class="t">${escapeHTML(s.title)}</div><div class="a">${escapeHTML(s.artist)}</div></div>
-            </div>
-          `,
+            </div>`,
             )
             .join("");
         } catch (err) {
@@ -623,10 +624,8 @@
       });
       audio.addEventListener("ended", next);
 
-      /* Unified pointer handlers prevent “reset to 0” */
-      let draggingId = null;
-      let wasPlaying = false;
-
+      let draggingId = null,
+        wasPlaying = false;
       function pctFromEvent(e) {
         const rect = barProg.getBoundingClientRect();
         const clientX =
@@ -644,8 +643,6 @@
         audio.currentTime = p * audio.duration;
         fillProg.style.width = p * 100 + "%";
       }
-
-      /* pointerdown: pause (only while dragging), seek immediately, capture pointer */
       barProg.addEventListener("pointerdown", (e) => {
         e.preventDefault();
         wasPlaying = !audio.paused;
@@ -654,13 +651,11 @@
         barProg.setPointerCapture(e.pointerId);
         applySeekPct(pctFromEvent(e));
       });
-      /* pointermove: update while dragging */
       barProg.addEventListener("pointermove", (e) => {
         if (draggingId !== e.pointerId) return;
         e.preventDefault();
         applySeekPct(pctFromEvent(e));
       });
-      /* pointerup/cancel/leave: finish drag, resume if it was playing */
       function endDrag(e) {
         if (draggingId === null) return;
         if (e && e.pointerId && e.pointerId !== draggingId) return;
@@ -696,23 +691,102 @@
         localStorage.setItem("vol", p.toFixed(2));
       }
 
-      /* === BUTTON HOOKS (no keyboard shortcuts) === */
+      /* === BUTTON HOOKS === */
       btnPlay.addEventListener("click", togglePlay);
       btnPrev.addEventListener("click", prev);
       btnNext.addEventListener("click", next);
       btnRandom.addEventListener("click", () => randomQueue());
+
+      /* === PERSIST STATE (survive iframe resize/reload) === */
+      const STATE_KEY = "hmplayer_v1";
+      function saveState(extra = {}) {
+        if (!q || idx < 0) return;
+        const s = q[idx];
+        const state = {
+          id: s.id,
+          title: s.title,
+          artist: s.artist,
+          cover: s.cover,
+          stream: s.stream,
+          idx,
+          playing,
+          t: audio.currentTime || 0,
+          vol: audio.volume,
+          q: q.slice(Math.max(0, idx - 5), idx + 6),
+        };
+        try {
+          localStorage.setItem(
+            STATE_KEY,
+            JSON.stringify({ ...state, ...extra }),
+          );
+        } catch {}
+      }
+      function restoreState() {
+        try {
+          const raw = localStorage.getItem(STATE_KEY);
+          if (!raw) return;
+          const st = JSON.parse(raw);
+          if (!st || !st.id) return;
+
+          q = (st.q && Array.isArray(st.q) ? st.q : [st]).map((s) => ({
+            id: s.id,
+            title: s.title,
+            artist: s.artist,
+            cover: s.cover,
+            stream: s.stream,
+          }));
+          idx = Math.max(
+            0,
+            q.findIndex((s) => s.id === st.id),
+          );
+
+          title.textContent = q[idx].title;
+          artist.textContent = q[idx].artist;
+          img.classList.remove("loaded");
+          img.src = API + q[idx].cover;
+          img.onload = () => img.classList.add("loaded");
+          audio.src = API + q[idx].stream;
+          audio.load();
+
+          const startAt = Number(st.t) || 0;
+          const shouldPlay = !!st.playing;
+          if (!isNaN(st.vol)) {
+            audio.volume = st.vol;
+            fillVol.style.width = audio.volume * 100 + "%";
+          }
+          audio.addEventListener("loadedmetadata", function once() {
+            audio.removeEventListener("loadedmetadata", once);
+            audio.currentTime = Math.min(startAt, audio.duration || startAt);
+            if (shouldPlay) play();
+            else pause();
+          });
+          nav();
+        } catch {}
+      }
+      window.addEventListener("beforeunload", () => saveState());
+      audio.addEventListener("timeupdate", () => {
+        if (!audio.paused) saveState();
+      });
+      audio.addEventListener("pause", () => saveState({ playing: false }));
+      audio.addEventListener("play", () => saveState({ playing: true }));
+      audio.addEventListener("ended", () =>
+        saveState({ playing: false, t: 0 }),
+      );
+
+      updatePlayIcon();
+      restoreState();
 
       /* === RESPONSIVE SCALE (fit to iframe) === */
       (function () {
         const stage = document.getElementById("stage");
         const scaleBox = document.querySelector(".scale-box");
 
-        // Must match CSS base size
-        const BASE_W = 400;
-        const BASE_H = 640;
+        // Match CSS base size
+        const BASE_W = 430,
+          BASE_H = 650;
 
         function applyScale(w, h) {
-          const s = Math.min(w / BASE_W, h / BASE_H);
+          const s = Math.min(w / BASE_W, h / BASE_H); // contain-fit (kept as-is since your sizing looked right)
           scaleBox.style.setProperty("--s", s.toString());
         }
 
@@ -722,7 +796,6 @@
         });
         ro.observe(stage);
 
-        // Initial measurement
         requestAnimationFrame(() => {
           const r = stage.getBoundingClientRect();
           applyScale(r.width, r.height);
