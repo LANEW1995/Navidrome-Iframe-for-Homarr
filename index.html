@@ -23,7 +23,6 @@
         padding: 0;
         font-family: system-ui, sans-serif;
       }
-
       html,
       body {
         height: 100%;
@@ -31,6 +30,7 @@
         overflow: hidden;
       }
 
+      /* Fill iframe and clip any overflow during scale */
       .stage {
         position: absolute;
         inset: 0;
@@ -40,8 +40,8 @@
 
       /* Center perfectly, then scale */
       .scale-box {
-        --base-w: 430;
-        --base-h: 650;
+        --base-w: 430; /* keep in sync with JS */
+        --base-h: 650; /* keep in sync with JS */
         --s: 1;
 
         position: absolute;
@@ -52,7 +52,9 @@
         transform: translate(-50%, -50%) scale(var(--s));
         transform-origin: center center;
         will-change: transform;
-        filter: drop-shadow(0 0 0 transparent);
+
+        /* art bias based on scale (subtle) */
+        --art-mult: clamp(0.92, 0.8 + var(--s), 1.12);
       }
 
       /* ── PLAYER CARD ──────────────────────────────────── */
@@ -66,39 +68,16 @@
         box-shadow: 0 6px 22px #000c;
         color: var(--text);
       }
-      .header {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 16px;
-      }
-
-      /* buttons */
-      .btn {
-        font-size: 24px;
-        padding: 6px 14px;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: 0.2s;
-      }
-      .btn-rand {
-        background: #2d2d2d;
-        color: #fff;
-      }
-      .btn-rand:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px #0009;
-      }
-
-      /* album */
       .album {
         position: relative;
         width: 100%;
-        padding-top: calc(100% * var(--art-mult));
+        padding-top: calc(
+          90% * var(--art-mult)
+        ); /* was 100%; trims height 10% */
         border-radius: 10px;
         background: linear-gradient(145deg, #657eff, #8151d9);
         overflow: hidden;
-        margin-bottom: 18px;
+        margin-bottom: calc(18px / var(--s));
       }
       .album img {
         position: absolute;
@@ -203,14 +182,31 @@
         box-shadow: none;
       }
 
-      /* perfectly center the emoji and keep the nudge constant across scaling */
+      /* perfect emoji baseline; offset remains constant at any scale */
       .icon-btn .glyph {
         position: relative;
         display: block;
         line-height: 1;
         font-size: 24px;
-        /* Use the scale variable so -2px stays -2px even when the whole card scales */
         top: calc(-2px / var(--s));
+      }
+
+      /* buttons */
+      .btn {
+        font-size: 24px;
+        padding: 6px 14px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: 0.2s;
+      }
+      .btn-rand {
+        background: #2d2d2d;
+        color: #fff;
+      }
+      .btn-rand:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px #0009;
       }
 
       /* volume */
@@ -238,6 +234,8 @@
       .overlay.show {
         display: flex;
       }
+
+      /* Keep modal same footprint; stack input, results, footer */
       .modal {
         width: 92%;
         max-width: 320px;
@@ -246,6 +244,8 @@
         border-radius: 10px;
         padding: 12px 12px 6px;
         box-shadow: 0 10px 30px #000d;
+        display: flex;
+        flex-direction: column;
       }
       .search-input {
         width: 100%;
@@ -260,9 +260,32 @@
         outline: none;
         border-color: var(--accent);
       }
+
+      /* Scrollable results with themed scrollbar */
       .results {
         margin-top: 8px;
+        max-height: 320px; /* fixed visual size */
+        overflow: auto;
+        padding-right: 4px; /* room beside scrollbar */
+        scrollbar-width: thin; /* Firefox */
+        scrollbar-color: #3a3a3a #2b2b2b;
       }
+      .results::-webkit-scrollbar {
+        width: 10px;
+      }
+      .results::-webkit-scrollbar-track {
+        background: #2b2b2b;
+        border-radius: 8px;
+      }
+      .results::-webkit-scrollbar-thumb {
+        background: #3a3a3a;
+        border-radius: 8px;
+        border: 2px solid #2b2b2b;
+      }
+      .results::-webkit-scrollbar-thumb:hover {
+        background: #4a4a4a;
+      }
+
       .result {
         display: flex;
         align-items: center;
@@ -298,6 +321,7 @@
         font-size: 11px;
         color: var(--text-dim);
       }
+
       .modal-footer {
         display: flex;
         justify-content: flex-end;
@@ -409,6 +433,9 @@
         idx = -1,
         playing = false,
         debounce;
+      let searchData = [],
+        renderIdx = 0;
+      const CHUNK = 20;
 
       /* === DOM === */
       const $ = (id) => document.getElementById(id);
@@ -542,12 +569,14 @@
         }
       }
 
-      /* === SEARCH === */
+      /* === SEARCH (overlay + lazy render) === */
       function openSearch() {
         overlay.classList.add("show");
         overlay.setAttribute("aria-hidden", "false");
         searchBox.value = "";
         resBox.innerHTML = "";
+        renderIdx = 0;
+        searchData = [];
         searchBox.focus();
       }
       function closeSearch() {
@@ -566,8 +595,36 @@
         debounce = setTimeout(() => doSearch(searchBox.value.trim()), 250);
       });
 
+      function renderMore(count = CHUNK) {
+        const slice = searchData.slice(renderIdx, renderIdx + count);
+        if (!slice.length) return;
+        const frag = document.createDocumentFragment();
+        slice.forEach((s) => {
+          const div = document.createElement("div");
+          div.className = "result";
+          div.dataset.id = s.id;
+          div.dataset.title = escapeHTML(s.title);
+          div.dataset.artist = escapeHTML(s.artist);
+          div.dataset.cover = s.coverArt || "";
+          div.innerHTML = `
+            <img src="${API}/api/cover/${s.coverArt || s.id}" alt="">
+            <div class="meta"><div class="t">${escapeHTML(s.title)}</div><div class="a">${escapeHTML(s.artist)}</div></div>`;
+          frag.appendChild(div);
+        });
+        resBox.appendChild(frag);
+        renderIdx += slice.length;
+      }
+
+      resBox.addEventListener("scroll", () => {
+        const nearBottom =
+          resBox.scrollTop + resBox.clientHeight >= resBox.scrollHeight - 24;
+        if (nearBottom) renderMore();
+      });
+
       async function doSearch(qry) {
         if (!qry) {
+          searchData = [];
+          renderIdx = 0;
           resBox.innerHTML = "";
           return;
         }
@@ -576,22 +633,16 @@
             `${API}/api/search?query=${encodeURIComponent(qry)}`,
           );
           const j = await r.json();
-          const results = j && j.success && j.results ? j.results : [];
-          if (!results.length) {
+          searchData = j && j.success && j.results ? j.results : [];
+          renderIdx = 0;
+          resBox.innerHTML = "";
+          if (!searchData.length) {
             resBox.innerHTML =
               "<div style='padding:8px;color:#aaa'>No results</div>";
             return;
           }
-          const items = results.slice(0, 5);
-          resBox.innerHTML = items
-            .map(
-              (s) => `
-            <div class="result" data-id="${s.id}" data-title="${escapeHTML(s.title)}" data-artist="${escapeHTML(s.artist)}" data-cover="${s.coverArt || ""}">
-              <img src="${API}/api/cover/${s.coverArt || s.id}" alt="">
-              <div class="meta"><div class="t">${escapeHTML(s.title)}</div><div class="a">${escapeHTML(s.artist)}</div></div>
-            </div>`,
-            )
-            .join("");
+          renderMore(40); // seed the list
+          resBox.scrollTop = 0;
         } catch (err) {
           console.error("search error:", err);
           resBox.innerHTML =
@@ -599,6 +650,7 @@
         }
       }
 
+      // Click-to-load result
       resBox.addEventListener("click", (e) => {
         const row = e.target.closest(".result");
         if (!row) return;
@@ -776,7 +828,7 @@
       updatePlayIcon();
       restoreState();
 
-      /* === RESPONSIVE SCALE (fit to iframe) === */
+      /* === RESPONSIVE SCALE (fit to iframe, contain) === */
       (function () {
         const stage = document.getElementById("stage");
         const scaleBox = document.querySelector(".scale-box");
@@ -786,8 +838,17 @@
           BASE_H = 650;
 
         function applyScale(w, h) {
-          const s = Math.min(w / BASE_W, h / BASE_H); // contain-fit (kept as-is since your sizing looked right)
-          scaleBox.style.setProperty("--s", s.toString());
+          const BASE_W = 430,
+            BASE_H = 650; // keep synced with CSS
+          // cover-fit so we never see side/top gaps
+          let s = Math.max(w / BASE_W, h / BASE_H);
+
+          // tiny overscan to defeat sub-pixel seams on some DPRs
+          s *= 1.002; // ~0.2% zoom; invisible but removes the fringe
+
+          document
+            .querySelector(".scale-box")
+            .style.setProperty("--s", s.toString());
         }
 
         const ro = new ResizeObserver((entries) => {
